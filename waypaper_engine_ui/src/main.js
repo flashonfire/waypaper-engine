@@ -1,4 +1,4 @@
-const {invoke} = window.__TAURI__.core;
+const {invoke, convertFileSrc} = window.__TAURI__.core;
 const {listen} = window.__TAURI__.event;
 
 let greetInputEl;
@@ -37,7 +37,16 @@ window.addEventListener("DOMContentLoaded", async () => {
         let ids = [];
 
         for (const wp of event.payload) {
-            frag.appendChild(create("<div class=\"wallpaper\" id='" + wp.id + "' style='background-image: url(" + wp.preview_b64 + ");'><h2>" + wp.title + "</h2></div>"));
+            let card = document.createElement("div");
+            card.className = "wallpaper";
+            card.id = wp.id;
+            card.style.backgroundImage = "url(" + JSON.stringify(convertFileSrc(wp.preview_path)) + ")";
+
+            let title = document.createElement("h2");
+            title.textContent = wp.title;
+            card.appendChild(title);
+
+            frag.appendChild(card);
             ids.push(wp.id);
         }
 

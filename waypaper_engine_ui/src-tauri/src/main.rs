@@ -1,15 +1,12 @@
 use std::fs;
 use std::fs::File;
-use std::io::Read;
 use std::ops::Deref;
-use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Error;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use linux_ipc::IpcChannel;
 use serde::Serialize;
-use tauri::{Emitter, State, Window};
+use tauri::{Emitter, Manager, State, Window};
 use xrandr_parser::Parser;
 
 use waypaper_engine_shared::ipc::{IPCRequest, IPCResponse};
@@ -62,7 +59,7 @@ fn apply_filter(window: Window, search: String, wallpaper_infos: State<Mutex<Vec
 struct WPInfo {
     title: String,
     id: u64,
-    preview_b64: String,
+    preview_path: String,
 }
 
 #[tauri::command]
@@ -100,24 +97,27 @@ fn loaded(
 
             let preview_path = wpe_dir.join(id.to_string()).join(&project.preview);
 
-            match to_base64(&preview_path) {
-                Ok(b64) => {
-                    let title = project.title.clone();
-
-                    Some(WPInfo {
-                        id,
-                        title,
-                        preview_b64: b64,
-                    })
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Failed to convert preview to base64 for file {:?} (wallpaper: {}): {}",
-                        preview_path, project.title, e
-                    );
-                    None
-                }
+            if !preview_path.is_file() {
+                eprintln!(
+                    "Preview file {:?} not found (wallpaper: {})",
+                    preview_path, project.title
+                );
+                return None;
             }
+
+            let Some(preview_path) = preview_path.to_str() else {
+                eprintln!(
+                    "Preview path {:?} is not valid UTF-8 (wallpaper: {})",
+                    preview_path, project.title
+                );
+                return None;
+            };
+
+            Some(WPInfo {
+                id,
+                title: project.title.clone(),
+                preview_path: preview_path.to_owned(),
+            })
         })
         .for_each(|wp| wallpaper_infos.push(wp));
 
@@ -134,6 +134,11 @@ fn main() -> Result<(), Error> {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            app.asset_protocol_scope()
+                .allow_directory(waypaper_engine_shared::get_wpe_dir(), true)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             loaded,
             get_screens,
@@ -149,29 +154,4 @@ fn main() -> Result<(), Error> {
         .expect("error while running tauri application");
 
     Ok(())
-}
-
-pub fn to_base64(path: &Path) -> Result<String, anyhow::Error> {
-    let mut file_type: String = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_owned();
-
-    if file_type == "jpg" {
-        "jpeg".clone_into(&mut file_type);
-    }
-
-    assert!(file_type == "jpeg" || file_type == "gif" || file_type == "png");
-
-    let mut file = File::open(path)?;
-    let mut vector = vec![];
-    let _ = file.read_to_end(&mut vector);
-    let base64 = STANDARD.encode(vector);
-
-    Ok(format!(
-        "data:image/{};base64,{}",
-        file_type,
-        base64.replace("\r\n", "")
-    ))
 }
