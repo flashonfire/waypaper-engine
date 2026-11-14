@@ -5,8 +5,9 @@
   ffmpeg-full,
   libGL,
   libxkbcommon,
-  mold-wrapped,
+  mold,
   pkg-config,
+  rust-jemalloc-sys,
   wayland,
   makeWrapper,
 }:
@@ -27,7 +28,7 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../../Cargo.lock;
 
   nativeBuildInputs = [
-    mold-wrapped
+    mold
     pkg-config
     rustPlatform.bindgenHook
     makeWrapper
@@ -38,6 +39,7 @@ rustPlatform.buildRustPackage {
     wayland
     libGL
     libxkbcommon
+    rust-jemalloc-sys
   ];
 
   env.RUSTFLAGS = "-C link-arg=-fuse-ld=mold";

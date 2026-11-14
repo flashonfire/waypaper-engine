@@ -1,6 +1,7 @@
 use crate::egl::EGLState;
 use crate::wallpaper::Wallpaper;
 use crate::wallpaper_renderer::WPRenderer;
+use crossbeam::channel::{RecvError, Sender};
 use fps_counter::FPSCounter;
 use gl::COLOR_BUFFER_BIT;
 use khronos_egl::ATTRIB_NONE;
@@ -13,8 +14,8 @@ use smithay_client_toolkit::reexports::client::protocol::{wl_output, wl_seat};
 use smithay_client_toolkit::reexports::client::{Connection, EventQueue, Proxy, QueueHandle};
 use smithay_client_toolkit::shell::wlr_layer::Anchor;
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_seat,
+    compositor::{CompositorHandler, CompositorState, FrameCallbackData},
+    delegate_dispatch2, delegate_registry,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
@@ -30,7 +31,6 @@ use smithay_client_toolkit::{
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
-use crossbeam::channel::{RecvError, Sender};
 use wayland_egl::WlEglSurface;
 use waypaper_engine_shared::ipc::{IPCResponse, InternalRequest};
 
@@ -523,7 +523,7 @@ impl SimpleLayer {
         // Request our next frame
         self.layer
             .wl_surface()
-            .frame(qh, self.layer.wl_surface().clone());
+            .frame(qh, FrameCallbackData(self.layer.wl_surface().clone()));
 
         // Commit to present.
         self.layer.commit();
@@ -537,10 +537,7 @@ impl SimpleLayer {
     }
 }
 
-delegate_compositor!(WLState);
-delegate_output!(WLState);
-delegate_seat!(WLState);
-delegate_layer!(WLState);
+delegate_dispatch2!(WLState);
 delegate_registry!(WLState);
 
 impl ProvidesRegistryState for WLState {

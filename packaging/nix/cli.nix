@@ -2,7 +2,7 @@
   self,
   lib,
   rustPlatform,
-  mold-wrapped,
+  mold,
 }:
 let
   cargoRoot = "waypaper_engine_cli";
@@ -21,7 +21,7 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../../Cargo.lock;
 
   nativeBuildInputs = [
-    mold-wrapped
+    mold
   ];
 
   env.RUSTFLAGS = "-C link-arg=-fuse-ld=mold";

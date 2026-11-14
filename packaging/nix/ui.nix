@@ -2,9 +2,11 @@
   self,
   lib,
   rustPlatform,
-  mold-wrapped,
+  mold,
   pkg-config,
-  pnpm_9,
+  fetchPnpmDeps,
+  pnpmConfigHook,
+  pnpm_10,
   webkitgtk_4_1,
   wrapGAppsHook3,
 }:
@@ -12,6 +14,7 @@ let
   projectRoot = "waypaper_engine_ui";
   cargoToml = lib.importTOML ../../${projectRoot}/src-tauri/Cargo.toml;
   rev = self.shortRev or self.dirtyShortRev or "dirty";
+  pnpm = pnpm_10;
 in
 rustPlatform.buildRustPackage rec {
   pname = cargoToml.package.name;
@@ -25,21 +28,23 @@ rustPlatform.buildRustPackage rec {
 
   cargoLock.lockFile = ../../Cargo.lock;
 
-  pnpmDeps = pnpm_9.fetchDeps {
+  pnpmDeps = fetchPnpmDeps {
     inherit
       pname
       version
       src
       sourceRoot
+      pnpm
       ;
-    fetcherVersion = 2;
-    hash = "sha256-tFOPGIeLf1ECRG11tIfhKSlQjdX1OvBMbDhlPPB6ShQ=";
+    fetcherVersion = 5;
+    hash = "sha256-XtXIJPpDRejANl+GvJWCxH3W04ASgjVVybgcZPdEmB4=";
   };
 
   nativeBuildInputs = [
-    mold-wrapped
+    mold
     pkg-config
-    pnpm_9.configHook
+    pnpm
+    pnpmConfigHook
     rustPlatform.bindgenHook
     wrapGAppsHook3
   ];
