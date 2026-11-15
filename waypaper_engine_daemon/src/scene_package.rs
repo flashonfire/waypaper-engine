@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 use tracing::Level;
 
+const LATEST_VERIFIED_VERSION: u32 = 24;
+
 #[derive(Debug, Clone)]
 pub struct FileEntry {
     pub(crate) name: String,
@@ -71,9 +73,14 @@ impl ScenePackage {
                     formatted_size
                 );
             }
-            contents.insert(
+            let previous = contents.insert(
                 entry.name.clone(),
                 read_file(&mut data, header_offset, entry),
+            );
+            assert!(
+                previous.is_none(),
+                "Duplicate PKG entry name: {}",
+                entry.name
             );
         }
 
@@ -113,7 +120,10 @@ fn read_header(data: &mut Cursor<Vec<u8>>) -> u32 {
         version
     );
 
-    if version != "PKGV0001" {
+    let version_number =
+        version_number(&version).unwrap_or_else(|| panic!("Invalid PKG file version: {version}"));
+
+    if version_number > LATEST_VERIFIED_VERSION {
         tracing::warn!(
             "Trying to unpack unsupported PKG file version: {}, if you encounter bugs please report them on the git repository",
             version
@@ -126,18 +136,40 @@ fn read_header(data: &mut Cursor<Vec<u8>>) -> u32 {
     file_count
 }
 
+fn version_number(version: &str) -> Option<u32> {
+    version
+        .strip_prefix("PKGV")
+        .filter(|digits| digits.len() == 4 && digits.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|digits| digits.parse().ok())
+        .filter(|&number| number > 0)
+}
+
 fn read_files(data: &mut Cursor<Vec<u8>>, file_count: u32) -> Vec<FileEntry> {
     let mut files = vec![];
 
     for _ in 0..file_count {
+        let name = read_str(data);
+        check_name(&name);
+
         files.push(FileEntry {
-            name: read_str(data),
+            name,
             offset: read_u32(data),
             size: read_u32(data),
         });
     }
 
     files
+}
+
+// Names get joined to a directory in `save_to_disk`, so they must stay plain relative paths
+fn check_name(name: &str) {
+    assert!(
+        !name.contains(['\0', '\\'])
+            && name
+                .split('/')
+                .all(|segment| !matches!(segment, "" | "." | "..")),
+        "Invalid PKG entry name: {name:?}"
+    );
 }
 
 fn read_file(data: &mut Cursor<Vec<u8>>, header_offset: u64, file: &FileEntry) -> FileContent {
@@ -152,5 +184,75 @@ fn read_file(data: &mut Cursor<Vec<u8>>, header_offset: u64, file: &FileEntry) -
     FileContent {
         name: file.name.clone(),
         data: content,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn collect_packages(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                collect_packages(&path, out);
+            } else if path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("pkg"))
+            {
+                out.push(path);
+            }
+        }
+    }
+
+    /// Extra folders to scan can be listed in `PKG_SAMPLE_DIRS`, separated by ':'
+    #[test]
+    #[ignore = "needs a local Wallpaper Engine workshop folder"]
+    fn parses_every_local_package() {
+        let mut roots = vec![waypaper_engine_shared::get_wpe_dir()];
+        if let Ok(extra) = std::env::var("PKG_SAMPLE_DIRS") {
+            roots.extend(
+                extra
+                    .split(':')
+                    .filter(|d| !d.is_empty())
+                    .map(PathBuf::from),
+            );
+        }
+
+        let mut paths = vec![];
+        for root in &roots {
+            collect_packages(root, &mut paths);
+        }
+        paths.sort();
+        assert!(!paths.is_empty(), "no .pkg files found in {roots:?}");
+
+        // version -> (packages, entries)
+        let mut summary: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        for path in &paths {
+            let version = read_str(&mut Cursor::new(fs::read(path).unwrap()));
+            let package = ScenePackage::new(path).unwrap();
+
+            let counts = summary.entry(version).or_default();
+            counts.0 += 1;
+            counts.1 += package.contents.len();
+        }
+
+        println!("{} packages parsed:", paths.len());
+        for (version, (packages, entries)) in &summary {
+            println!("  {version}: {packages} packages, {entries} entries");
+        }
+
+        let newer: Vec<&String> = summary
+            .keys()
+            .filter(|v| version_number(v).is_some_and(|n| n > LATEST_VERIFIED_VERSION))
+            .collect();
+        if !newer.is_empty() {
+            println!("Newer than PKGV{LATEST_VERIFIED_VERSION:04}: {newer:?}");
+        }
     }
 }
