@@ -181,8 +181,8 @@ impl AppState {
                         return false;
                     }
                 }
-                Wallpaper::Scene { .. } => {
-                    let scene_pkg_file = path.join("scene.pkg");
+                Wallpaper::Scene { ref project, .. } => {
+                    let scene_pkg_file = Wallpaper::scene_package_path(&path, project);
 
                     if scene_pkg_file.exists() {
                         tracing::info!("Found scene package file ! (Path : {scene_pkg_file:?})");

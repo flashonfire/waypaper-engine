@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use waypaper_engine_shared::project::{WEProject, WallpaperType};
@@ -40,7 +40,7 @@ impl Wallpaper {
                 }
             }
             WallpaperType::Scene => {
-                let scene_pkg_path = path.join("scene.pkg");
+                let scene_pkg_path = Self::scene_package_path(&path, &project);
                 let scene_package = ScenePackage::new(&scene_pkg_path).unwrap();
 
                 Wallpaper::Scene {
@@ -51,6 +51,17 @@ impl Wallpaper {
             WallpaperType::Web => Wallpaper::Web { project },
             WallpaperType::Preset => Wallpaper::Preset { project },
         })
+    }
+
+    // The package is named after the project's scene file: scene.json -> scene.pkg,
+    // gifscene.json -> gifscene.pkg
+    pub fn scene_package_path(base_dir: &Path, project: &WEProject) -> PathBuf {
+        let scene_file = project
+            .file
+            .as_ref()
+            .unwrap_or_else(|| panic!("Scene project {} has no `file` field", project.title));
+
+        base_dir.join(Path::new(scene_file).with_extension("pkg"))
     }
 
     pub fn wp_type(&self) -> WallpaperType {
