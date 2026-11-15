@@ -138,6 +138,7 @@ pub enum ContainerVersion {
     TEXB001,
     TEXB002,
     TEXB003,
+    TEXB004,
 }
 
 impl TryFrom<&str> for ContainerVersion {
@@ -148,6 +149,7 @@ impl TryFrom<&str> for ContainerVersion {
             "TEXB0001" => Self::TEXB001,
             "TEXB0002" => Self::TEXB002,
             "TEXB0003" => Self::TEXB003,
+            "TEXB0004" => Self::TEXB004,
             _ => return Err(()),
         })
     }
@@ -282,7 +284,7 @@ fn read_container(data: &mut Cursor<Vec<u8>>) -> Container {
     let image_count = read_u32(data);
     let freeimage_format = match version {
         ContainerVersion::TEXB001 | ContainerVersion::TEXB002 => None,
-        ContainerVersion::TEXB003 => {
+        ContainerVersion::TEXB003 | ContainerVersion::TEXB004 => {
             let format = read_i32(data);
             if format > 0 {
                 Some(FreeImageFormat::try_from(format as u32).unwrap())
@@ -291,6 +293,11 @@ fn read_container(data: &mut Cursor<Vec<u8>>) -> Container {
             }
         }
     };
+
+    if version == ContainerVersion::TEXB004 {
+        let is_video_mp4 = read_u32(data);
+        assert_eq!(is_video_mp4, 0, "TEXB0004 video textures aren't supported");
+    }
 
     tracing::debug!("\tImage Count: {image_count}");
     match freeimage_format {
@@ -311,7 +318,7 @@ fn read_mipmap(cursor: &mut Cursor<Vec<u8>>, container_version: &ContainerVersio
 
     let (is_compressed, image_size_uncompressed) = match container_version {
         ContainerVersion::TEXB001 => (false, None),
-        ContainerVersion::TEXB002 | ContainerVersion::TEXB003 => {
+        ContainerVersion::TEXB002 | ContainerVersion::TEXB003 | ContainerVersion::TEXB004 => {
             let compression_flag = read_u32(cursor);
             assert!(compression_flag == 0 || compression_flag == 1);
             let is_compressed = compression_flag != 0;
