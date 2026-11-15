@@ -470,3 +470,58 @@ fn read_frame_info(data: &mut Cursor<Vec<u8>>) -> FrameInfoContainer {
         sprite_size,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene_package::ScenePackage;
+    use std::collections::BTreeMap;
+    use std::panic;
+
+    #[test]
+    #[ignore = "needs a local Wallpaper Engine workshop folder"]
+    fn parses_every_local_texture() {
+        // container version -> textures
+        let mut summary: BTreeMap<String, usize> = BTreeMap::new();
+
+        for project_dir in fs::read_dir(waypaper_engine_shared::get_wpe_dir())
+            .unwrap()
+            .flatten()
+        {
+            for file in fs::read_dir(project_dir.path()).unwrap().flatten() {
+                let pkg_path = file.path();
+                if !pkg_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("pkg"))
+                {
+                    continue;
+                }
+
+                let package = ScenePackage::new(&pkg_path).unwrap();
+                for (name, content) in &package.contents {
+                    if !Path::new(name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("tex"))
+                    {
+                        continue;
+                    }
+
+                    let bytes = content.bytes().to_vec();
+                    let texture = panic::catch_unwind(|| TexFile::from_bytes(bytes).unwrap())
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to parse {name} in {}", pkg_path.display())
+                        });
+
+                    *summary
+                        .entry(format!("{:?}", texture.container.version))
+                        .or_default() += 1;
+                }
+            }
+        }
+
+        println!("{} textures parsed:", summary.values().sum::<usize>());
+        for (version, count) in &summary {
+            println!("  {version}: {count}");
+        }
+    }
+}
